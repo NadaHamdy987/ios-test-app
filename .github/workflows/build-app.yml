@@ -1,0 +1,57 @@
+name: Build iOS Simulator .app (ios-test-app)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+jobs:
+  build-sim:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show Xcode & SDKs
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks || true
+      - name: List schemes
+        run: |
+          xcodebuild -project TestApp.xcodeproj -list || true
+      - name: Build for iOS Simulator
+        id: build
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project TestApp.xcodeproj \
+            -scheme TestApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            clean build | tee build.log
+          echo "build_log=$PWD/build.log" >> "$GITHUB_OUTPUT"
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-build-log
+          path: ${{ steps.build.outputs.build_log }}
+      - name: Locate .app
+        id: locate
+        run: |
+          APP_PATH=$(find "$PWD" -type d -name "*.app" -path "*/Build/Products/Debug-iphonesimulator/*" | head -n 1 || true)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found."
+            exit 1
+          fi
+          echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
+          echo "Found: $APP_PATH"
+      - name: Zip .app for Appetize
+        run: |
+          cd "$(dirname '${{ steps.locate.outputs.app_path }}')"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(basename '${{ steps.locate.outputs.app_path }}')" TestApp.app.zip
+          ls -lh TestApp.app.zip
+      - name: Upload Artifact (.app.zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestApp.app.zip
+          path: ${{ steps.locate.outputs.app_path }}/../TestApp.app.zip
+          if-no-files-found: error
