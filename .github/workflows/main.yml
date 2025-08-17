@@ -1,0 +1,42 @@
+name: Build iOS Simulator .app (for Appetize)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+jobs:
+  build-sim:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build for iOS Simulator
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project TestApp.xcodeproj \
+            -scheme TestApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            clean build
+
+      - name: Locate .app
+        id: locate
+        run: |
+          APP_PATH=$(find "$PWD" -type d -name "*.app" -path "*/Build/Products/Debug-iphonesimulator/*" | head -n 1)
+          echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
+          echo "Found: $APP_PATH"
+
+      - name: Zip .app for Appetize
+        run: |
+          cd "$(dirname '${{ steps.locate.outputs.app_path }}')"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(basename '${{ steps.locate.outputs.app_path }}')" TestApp.app.zip
+          ls -lh TestApp.app.zip
+
+      - name: Upload Artifact (.app.zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestApp.app.zip
+          path: ${{ steps.locate.outputs.app_path }}/../TestApp.app.zip
+          if-no-files-found: error
